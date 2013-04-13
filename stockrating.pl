@@ -102,11 +102,11 @@ my ($sector, $stock_next_report_close, $next_report_date, $last_report_date, $st
 
 my @ticker_report_date = ();
 
-#my @ticker_list = access_file_to_array('sp4571.txt');
+my @ticker_list = access_file_to_array('sp4571.txt');
 
 #my @ticker_list = qw(AAPL GE SKS GS);
 #my @ticker_list = qw(XL DIA QQQ);
-my @ticker_list = qw(ABIO);
+#my @ticker_list = qw(ABIO);
 
 foreach my $ticker (@ticker_list) {
 	
@@ -177,7 +177,7 @@ for my $i (0 .. $#ticker_list) {
     if (defined $stock_enterprise_value and $stock_enterprise_value ne "")  {
     	$stock_enterprise_value =~  s/\.//g ;
     	print "normal: stock_enterprise_value1 = $stock_enterprise_value\n";
-  		$stock_enterprise_value =~ s/B$/0/g;
+  		$stock_enterprise_value =~ s/B$/000/g;
     	print "normal: stock_enterprise_value2 = $stock_enterprise_value\n";
    		$stock_enterprise_value =~ s/M$//g;
    		print "normal: stock_enterprise_value3 = $stock_enterprise_value\n";
@@ -200,7 +200,7 @@ for my $i (0 .. $#ticker_list) {
     @array_peers_enterprise_value = map { local $_ = $_; s/\.//g; $_ }  @array_peers_enterprise_value;
     print "normal: array_peers_enterprise_value1 = @array_peers_enterprise_value \n";
 
-    @array_peers_enterprise_value = map { local $_ = $_; s/B$/0/g; $_ }  @array_peers_enterprise_value;
+    @array_peers_enterprise_value = map { local $_ = $_; s/B$/000/g; $_ }  @array_peers_enterprise_value;
     print "normal: array_peers_enterprise_value2 = @array_peers_enterprise_value \n";
 
     @array_peers_enterprise_value = map { local $_ = $_; s/M$//g; $_}  @array_peers_enterprise_value;
