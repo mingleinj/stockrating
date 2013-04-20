@@ -6,7 +6,7 @@ use DBD::mysql;
 use DBI qw(:sql_types);
 use IO::File;
 
-my $dbh = DBI->connect('DBI:mysql:stock;host=localhost', 'root', 'admin',
+my $dbh = DBI->connect('DBI:mysql:stock;host=localhost', 'root', 'M1ng@2011',
 	{ 
 		RaiseError => 1,
 	  	AutoCommit=>0
@@ -118,10 +118,10 @@ my ($sector, $stock_next_report_close, $next_report_date, $last_report_date, $st
 
 my @ticker_report_date = ();
 
-#my @ticker_list = access_file_to_array('sp4571.txt');
+my @ticker_list = access_file_to_array('sp4571.txt');
 
 #my @ticker_list = qw(AAPL GE SKS GS);
-my @ticker_list = qw(GE);
+#my @ticker_list = qw(GKK);
 #my @ticker_list = qw(XL DIA QQQ);
 #my @ticker_list = qw(ABIO);
 
@@ -142,7 +142,7 @@ if (@stock_report_date!=3) {
 print "@ticker_report_date \n";
 
 #open (my $file, '>', 'LogisticInput.csv');
-open (my $file, '>', 'LogisticInput_test.csv');
+open (my $file, '>', 'LogisticInput_04172013.csv');
 
 print_to($file, 'Ticker', 'Sector', 'Latest report date', 'Last report date', 'Market beat value', 'Market reaction', 'Weekly Market Reaction', 'Earning surprise', 'Gross margin change', 'Margin trend', 'Revenue growth trend', 'Peg', 'Peg/Peg of peers', 'Peg/Peg Sector', 'CAPE', 'Current market performance', 'Enterprise/Cash', 'Enterprise/Cash compareed with peers');	
 
@@ -220,7 +220,7 @@ for my $i (0 .. $#ticker_list) {
      print "normal: stock_cash_flow = $stock_cash_flow\n";
     #}
     
-    if ($stock_enterprise_value && $stock_cash_flow ) {
+    if ($stock_enterprise_value && ($stock_cash_flow!=0.0)) {
      	$stock_enterprise_cash_ratio = $stock_enterprise_value/$stock_cash_flow;
     } else {
      	$stock_enterprise_cash_ratio = 'N/A';
@@ -394,13 +394,16 @@ for my $i (0 .. $#ticker_list) {
 
 	print "margin_trend= $margin_trend \n";
 
-	if ($array_totalrevenue[4] ne 'N/A' && $array_totalrevenue[3] ne 'N/A' && $array_totalrevenue[0] ne 'N/A' && defined $avg_revenue_growth)
+	if ($array_totalrevenue[4] ne 'N/A' && $array_totalrevenue[3] ne 'N/A' && $array_totalrevenue[0] ne 'N/A')
 	{
 		$cur_revenue_growth = $array_totalrevenue[4]-$array_totalrevenue[3];
 
 		$avg_revenue_growth = ($array_totalrevenue[4] - $array_totalrevenue[0])/4;
-
-		$revenue_growth_trend =$cur_revenue_growth/$avg_revenue_growth;
+        if ($avg_revenue_growth!=0) {
+			$revenue_growth_trend =$cur_revenue_growth/$avg_revenue_growth;			
+        } else {
+        	$revenue_growth_trend ='N/A';
+        }
 	} else {
 
 		$revenue_growth_trend ='N/A';
