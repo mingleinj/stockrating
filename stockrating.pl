@@ -5,6 +5,7 @@ use DBI;
 use DBD::mysql;
 use DBI qw(:sql_types);
 use IO::File;
+use List::Util qw(sum);
 
 my $dbh = DBI->connect('DBI:mysql:stock;host=localhost', 'root', 'M1ng@2011',
 	{ 
@@ -63,17 +64,11 @@ my $sql_getLatestEarningSurprise = qq{
 };
 
 #Get gross margin change over the last quarter
-#my $sql_getGrossMargin = qq{
-# select grossmagin, depreciation, totalrevenue from stock.hubreport where ticker in (?) order by id asc limit 4,5;
-#};
+
 my $sql_getGrossMargin = qq{
 	select grossmagin, depreciation, totalrevenue from stock.hubreport where ticker in (?) order by id asc limit ?,?;
 };
 
-#Get average gross margin over the last four quarters
-#my $sql_getAvgGrossMargin = qq{
-# select grossmagin, depreciation, totalrevenue from stock.hubreport where ticker in (?) order by id asc limit 0,4;
-#};
 
 #Get PEG
 my $sql_peg = qq{
@@ -105,6 +100,11 @@ my $sql_sector = qq{
 	select sector from stock.industrymapping where ticker in (?)
 } ;
 
+#Get sticker year earning
+my $sql_year_earning = qq{
+	SELECT earnings from stock.earnings where ticker in (?) order by id asc limit 0, 10;
+};
+
 my ($sql_peg_of_peers);
  
 
@@ -114,16 +114,18 @@ my ($sector, $stock_next_report_close, $next_report_date, $last_report_date, $st
  $avg_revenue_growth, $revenue_growth_trend, @array_totalrevenue, $peg, @competitors, $peg_avg_competitors,
  $cur_market_performance, $stock_last_close, $spy_last_close, $stock_enterprise_value, $stock_cash_flow,
  @array_peers_enterprise_value, @array_peers_cash_flow, $stock_enterprise_cash_ratio, @array_competitors_enterprise_cash_ratio,
- $avg_competitors_enterprise_cash_ratio, $stock_competitors_enterprise_cash_ratio);
+ $avg_competitors_enterprise_cash_ratio, $stock_competitors_enterprise_cash_ratio, $stock_weekly_beat_ratio, $spy_weekly_beat_ratio);
+
+my @cpi = qw(cpi 184.5 191 197.6 201.5 210.177 212.425 216.33 218.803 226.23 230.221);
 
 my @ticker_report_date = ();
 
 my @ticker_list = access_file_to_array('sp4571.txt');
 
 #my @ticker_list = qw(AAPL GE SKS GS);
-#my @ticker_list = qw(GKK);
+#my @ticker_list = qw(AAPL);
 #my @ticker_list = qw(XL DIA QQQ);
-#my @ticker_list = qw(ABIO);
+#my @ticker_list = qw(WBNK);
 
 foreach my $ticker (@ticker_list) {
 
@@ -142,9 +144,33 @@ if (@stock_report_date!=3) {
 print "@ticker_report_date \n";
 
 #open (my $file, '>', 'LogisticInput.csv');
-open (my $file, '>', 'LogisticInput_04172013.csv');
+open (my $file, '>', 'LogisticInput_test.csv');
 
-print_to($file, 'Ticker', 'Sector', 'Latest report date', 'Last report date', 'Market beat value', 'Market reaction', 'Weekly Market Reaction', 'Earning surprise', 'Gross margin change', 'Margin trend', 'Revenue growth trend', 'Peg', 'Peg/Peg of peers', 'Peg/Peg Sector', 'CAPE', 'Current market performance', 'Enterprise/Cash', 'Enterprise/Cash compareed with peers');	
+print_to($file, 'Ticker', 'Sector', 'Latest report date', 'Last report date', 'Market beat value', 'Stock Beat Ratio','Spy Beat Ratio', 'Stock Weekly Beat Ratio', 'Spy Weekly Beat Ratio', 'Market reaction', 'Weekly Market Reaction', 'Weekly Spy Market Reaction',
+ 'Earning surprise', 'Gross margin change', 'Margin trend', 'Revenue growth trend', 'Peg', 'average peg of competitors', 'Peg/Peg Sector', 'CAPE', 'Current market performance',
+ 'Two report date market performance', 'Enterprise/Cash', 'Enterprise/Cash compareed with peers');
+ 
+print_to($file, 'Ticker', 'Sector', 'Latest report date', 'Last report date',
+ '((stock_next_report_close-stock_last_report_close)/stock_last_report_close)/((spy_next_report_close-spy_last_report_close)/spy_last_report_close)',
+ '(stock_next_report_close-stock_last_report_close)/stock_last_report_close',
+ '(spy_next_report_close-spy_last_report_close)/spy_last_report_close',
+ '(stock_next_report_oneweek_close-stock_last_report_oneweek_close)/stock_last_report_oneweek_close',
+ '(spy_next_report_oneweek_close-spy_last_report_oneweek_close)/spy_last_report_oneweek_close',
+ '(stock_after_next_close -stock_before_next_close)/stock_before_next_close',
+ '(stock_oneweek_avg_after_report_price -stock_oneweek_avg_before_report_price)/stock_oneweek_avg_before_report_price',
+ '(spy_oneweek_avg_after_report_price -spy_oneweek_avg_before_report_price)/spy_oneweek_avg_before_report_price',
+ 'Data from stock.earningsuperise',
+ '(grossmargin -depreciation)/totalrevenue',
+ '((grossmargin -depreciation)/totalrevenue)/4quarters_avg_magin_ratio',
+ 'cur_revenue_growth/avg_revenue_growth',
+ 'PEG Data from stock.m_valuation',
+ 'average peg of competitors',
+ 'N/A',
+ 'latest_quarter_report_date_close*ten_years_cape_correlation',
+ '(stock_last_close - stock_next_report_close)/(spy_last_close -spy_next_report_close)',
+ '(stock_next_report_close-stock_last_report_close)/(spy_next_report_close-spy_last_report_close)',
+ 'Enterprise/Cash',
+ '($stock_enterprise_value/$stock_cash_flow)/avg_competitors_enterprise_cash_ratio'); 	
 
 my @ticker_array = @ticker_report_date;
 
@@ -164,19 +190,51 @@ for my $i (0 .. $#ticker_list) {
 
     my $stock_report_id = get_close_price($sql_report_date_id, $dbh, $ticker_array[3*$i], $ticker_array[3*$i+1]);
     
+    my $stock_last_report_id = get_close_price($sql_report_date_id, $dbh, $ticker_array[3*$i], $ticker_array[3*$i+2]);
+    
     my $stock_oneweek_avg_before_report_price=get_close_price($sql_oneweek_avg_before_report_price, $dbh, $stock_report_id, $stock_report_id);
     
     my $stock_oneweek_avg_after_report_price=get_close_price($sql_oneweek_avg_after_report_price, $dbh, $stock_report_id, $stock_report_id);
     
-    my $weekly_market_reaction = 'N/A';
+    my $stock_last_report_oneweek_close=get_close_price($sql_oneweek_avg_after_report_price, $dbh, $stock_last_report_id, $stock_last_report_id);
     
-	if (defined $stock_oneweek_avg_after_report_price and $stock_oneweek_avg_after_report_price ne '-999' and $stock_oneweek_avg_after_report_price ne '0' ) {
+    my $weekly_market_reaction = 'N/A';
+    $stock_weekly_beat_ratio = 'N/A';
+    
+	if (defined $stock_oneweek_avg_after_report_price and $stock_oneweek_avg_after_report_price ne '-999' and $stock_oneweek_avg_after_report_price ne '0' and $stock_last_report_oneweek_close!=0) {
 		$weekly_market_reaction = ($stock_oneweek_avg_after_report_price -$stock_oneweek_avg_before_report_price)/$stock_oneweek_avg_before_report_price;
+		
+		$stock_weekly_beat_ratio = ($stock_oneweek_avg_after_report_price - $stock_last_report_oneweek_close)/$stock_last_report_oneweek_close;
+		
 	}
 
-	print "$weekly_market_reaction = $weekly_market_reaction \n";
+	print "weekly_market_reaction = $weekly_market_reaction \n";
+	
+	print "stock_weekly_beat_ratio = $stock_weekly_beat_ratio \n";
+	
+	my $weekly_spy_market_reaction = 'N/A';	
+	$spy_weekly_beat_ratio ='N/A';
+	
+	my $spy_report_id = get_close_price($sql_report_date_id, $dbh, 'SPY', $ticker_array[3*$i+1]);
+	
+	my $spy_last_report_id = get_close_price($sql_report_date_id, $dbh, 'SPY', $ticker_array[3*$i+2]);
+	
+	my $spy_oneweek_avg_before_report_price=get_close_price($sql_oneweek_avg_before_report_price, $dbh, $spy_report_id, $spy_report_id); 
     
+    my $spy_oneweek_avg_after_report_price=get_close_price($sql_oneweek_avg_after_report_price, $dbh, $spy_report_id, $spy_report_id);
+    
+    my $spy_last_report_oneweek_close=get_close_price($sql_oneweek_avg_after_report_price, $dbh, $spy_last_report_id, $spy_last_report_id);
 
+    if (defined $spy_oneweek_avg_after_report_price and $spy_oneweek_avg_after_report_price ne '-999' and $spy_oneweek_avg_after_report_price ne '0'and $spy_last_report_oneweek_close!=0 ) {
+		$weekly_spy_market_reaction = ($spy_oneweek_avg_after_report_price -$spy_oneweek_avg_before_report_price)/$spy_oneweek_avg_before_report_price;
+		
+		$spy_weekly_beat_ratio = ($spy_oneweek_avg_after_report_price - $spy_last_report_oneweek_close)/$spy_last_report_oneweek_close;
+	}
+	
+	print "weekly_spy_market_reaction = $weekly_spy_market_reaction \n";
+	
+	print "spy_weekly_beat_ratio = $spy_weekly_beat_ratio \n";
+		
 	$stock_next_report_close = get_close_price ($sql_close_price, $dbh, $ticker_array[3*$i], $ticker_array[3*$i+1]);
 
 	@gross_margin_ratio = get_margin_ratio_with_one_variable($sql_getGrossMargin, $dbh, $ticker_array[3*$i]);
@@ -214,14 +272,14 @@ for my $i (0 .. $#ticker_list) {
     	$stock_enterprise_value =~ s/M$//g;
     	print "normal: stock_enterprise_value3 = $stock_enterprise_value\n";
     }
-    #if (defined$stock_cash_flow and $stock_cash_flow ne "") {
+   
      $stock_cash_flow = access_with_one_variable ($sql_cash_flow, $dbh, $ticker_array[3*$i]);
      $stock_cash_flow =~ s/,//g;
      print "normal: stock_cash_flow = $stock_cash_flow\n";
-    #}
+ 
     
-    if ($stock_enterprise_value && ($stock_cash_flow!=0.0)) {
-     	$stock_enterprise_cash_ratio = $stock_enterprise_value/$stock_cash_flow;
+    if ($stock_enterprise_value && ($stock_cash_flow ne "") &&($stock_cash_flow!=0.0)) {
+     	$stock_enterprise_cash_ratio = $stock_enterprise_value/(100*$stock_cash_flow);
     } else {
      	$stock_enterprise_cash_ratio = 'N/A';
     }
@@ -265,7 +323,7 @@ for my $i (0 .. $#ticker_list) {
      	$avg_competitors_enterprise_cash_ratio =0;
     }
     
-    print "stock_enterprise_cash_ratio=$stock_enterprise_cash_ratio \n";
+    #print "stock_enterprise_cash_ratio=$stock_enterprise_cash_ratio \n";
     print "avg_competitors_enterprise_cash_ratio=$avg_competitors_enterprise_cash_ratio \n";
     
     if ($stock_enterprise_cash_ratio && $avg_competitors_enterprise_cash_ratio) {    	
@@ -347,24 +405,37 @@ for my $i (0 .. $#ticker_list) {
     
     }
     
-    my $beat_value;
+    my ($stock_beat_ratio, $spy_beat_ratio, $beat_value, $two_report_market_performance);
+    
     if (defined $stock_next_report_close &&defined $spy_next_report_close && defined $spy_last_report_close){
-	    my $stock_beat_ratio = ($stock_next_report_close-$stock_last_report_close)/$stock_last_report_close;
+	    $stock_beat_ratio = ($stock_next_report_close-$stock_last_report_close)/$stock_last_report_close;
+	    my $stock_beat = $stock_next_report_close-$stock_last_report_close;
 	    print "$ticker_array[3*$i], stock_next_report_close=$stock_next_report_close stock_last_report_close= $stock_last_report_close stock_beat_ratio=$stock_beat_ratio \n";
-		my $spy_beat_ratio = ($spy_next_report_close-$spy_last_report_close)/$spy_last_report_close;
+		
+		$spy_beat_ratio = ($spy_next_report_close-$spy_last_report_close)/$spy_last_report_close;
+		my $spy_beat = $spy_next_report_close-$spy_last_report_close;
 	    print "$ticker_array[3*$i], spy_next_report_close=$spy_next_report_close spy_last_report_close= $spy_last_report_close spy_beat_ratio=$spy_beat_ratio \n";
-	if($stock_beat_ratio > $spy_beat_ratio) {
-		$beat_value =1;
-	} else {
-		$beat_value =0;
-	}
+		
+		if($stock_beat_ratio > $spy_beat_ratio) {
+			$beat_value =1;
+		} else {
+			$beat_value =0;
+		}
+		
+		if ($spy_beat !=0){
+			$two_report_market_performance = $stock_beat/$spy_beat;
+		}
     } else {
      	$beat_value ='N/A';
+     	$two_report_market_performance = 'N/A';
     }
 	print "$ticker_array[3*$i] beat_value = $beat_value \n";
+	
+	print "$ticker_array[3*$i] two_report_market_performance = $two_report_market_performance \n";
+						
 
 	my $market_reaction = 'N/A';
-	if (defined $stock_after_next_close and $stock_after_next_close ne '-999') {
+	if (defined $stock_after_next_close && $stock_after_next_close!=-999 &&$stock_before_next_close!=0) {
 		$market_reaction = ($stock_after_next_close -$stock_before_next_close)/$stock_before_next_close;
 	}
 
@@ -409,26 +480,50 @@ for my $i (0 .. $#ticker_list) {
 		$revenue_growth_trend ='N/A';
 	}
 
-
 	print "revenue_growth_trend=$revenue_growth_trend \n";
 
 	print "competitors = @competitors \n";
 
-	print"peg_avg_competitors=$peg_avg_competitors \n";
-
+	print "peg_avg_competitors=$peg_avg_competitors \n";
+					
 	if (defined $spy_last_close && defined $spy_next_report_close && ($spy_last_close!=$spy_next_report_close)){
 		$cur_market_performance = ($stock_last_close -$stock_next_report_close)/($spy_last_close -$spy_next_report_close);
 	} else {
 		$cur_market_performance = 'N/A';
 	}
-	print "cur_market_performance =$cur_market_performance \n";
-  	print "stock_competitors_enterprise_cash_ratio = $stock_competitors_enterprise_cash_ratio \n";
+#	print "cur_market_performance =$cur_market_performance \n";
+#  	print "stock_competitors_enterprise_cash_ratio = $stock_competitors_enterprise_cash_ratio \n";
+  	
+  	print "cpi = @cpi \n";
+  	
+  	my @years_earnings =get_array_with_one_variable($sql_year_earning, $dbh, $ticker_array[3*$i]);
+  	print "years_earnings = @years_earnings \n";
+  	
+  	my @cape_corr_div = map{$cpi[$_] * $years_earnings[$_]} ( 1 .. 10);
+  	print "cape_corr_div = @cape_corr_div \n";
+  	
+  	my $acc = sum(0, @cape_corr_div)/10;
+  	print "acc = $acc \n";
+
+    my $correlation = "N/A";
+    
+    my $cape = "N/A";
+    
+    if ($acc!=0) {
+    	$correlation = $cpi[10]/$acc;
+    	$cape = $stock_next_report_close*$correlation;
+    }
+    
+    print "correlation = $correlation \n";
+    
+    print "stock_next_report_close = $stock_next_report_close \n";
+      	  	
+  	print "cape=$cape \n";
+  	
  
-    print_to($file, $ticker_array[3*$i], $sector, $next_report_date, $last_report_date, $beat_value, $market_reaction, $weekly_market_reaction, $earning_surprise, $gross_margin_ratio[4], $margin_trend, $revenue_growth_trend, $peg, $peg_avg_competitors, 'N/A', 'N/A', $cur_market_performance, $stock_enterprise_cash_ratio, $stock_competitors_enterprise_cash_ratio);
+    print_to($file, $ticker_array[3*$i], $sector, $next_report_date, $last_report_date, $beat_value, $stock_beat_ratio, $spy_beat_ratio, $stock_weekly_beat_ratio, $spy_weekly_beat_ratio, $market_reaction, $weekly_market_reaction, $weekly_spy_market_reaction, $earning_surprise, $gross_margin_ratio[4], $margin_trend, $revenue_growth_trend, $peg, $peg_avg_competitors, 'N/A', $cape, $cur_market_performance, $two_report_market_performance, $stock_enterprise_cash_ratio, $stock_competitors_enterprise_cash_ratio);
     
 }
-
-
 
 
 close $file;
@@ -440,8 +535,13 @@ sub print_to{
 	my $next_report_date = shift;
 	my $last_report_date = shift;
 	my $beat_value = shift;
+	my $stock_beat_ratio = shift;
+	my $spy_beat_ratio = shift;
+	my $stock_weekly_beat_ratio = shift;
+	my $spy_weekly_beat_ratio = shift;
 	my $market_reaction = shift;
 	my $weekly_market_reaction = shift;
+	my $weekly_spy_market_reaction = shift;
 	my $gross_margin_ratio = shift;
 	my $margin_trend =shift;
 	my $earning_surprise = shift;
@@ -451,9 +551,10 @@ sub print_to{
 	my $peg_to_sector_ratio =shift;
 	my $cape_performance =shift;
 	my $cur_market_performance = shift;
+	my $two_report_market_performance = shift;
 	my $stock_enterprise_cash_ratio =shift;
 	my $stock_competitors_enterprise_cash_ratio = shift;
-	my @row = ($ticker, $sector, $next_report_date, $last_report_date, $beat_value, $market_reaction, $weekly_market_reaction, $earning_surprise, $gross_margin_ratio, $margin_trend, $revenue_growth_trend, $peg, $peg_avg_competitors, $peg_to_sector_ratio, $cape_performance, $cur_market_performance, $stock_enterprise_cash_ratio, $stock_competitors_enterprise_cash_ratio);
+	my @row = ($ticker, $sector, $next_report_date, $last_report_date, $beat_value, $stock_beat_ratio, $spy_beat_ratio, $stock_weekly_beat_ratio, $spy_weekly_beat_ratio, $market_reaction, $weekly_market_reaction, $weekly_spy_market_reaction, $earning_surprise, $gross_margin_ratio, $margin_trend, $revenue_growth_trend, $peg, $peg_avg_competitors, $peg_to_sector_ratio, $cape_performance, $cur_market_performance, $two_report_market_performance, $stock_enterprise_cash_ratio, $stock_competitors_enterprise_cash_ratio);
 	my $ticker_row = join(',',@row);
 	print $file $ticker_row ."\n";	
 
@@ -491,7 +592,8 @@ sub get_close_price {
 	$close = '-999';
 	}
 	
-	#print "$close \n";
+	#print "sql_price -----> $sql_price \n";
+	#print "date ----> $date \n";
 	$sth->finish();
 	return $close;
 }
